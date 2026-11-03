@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>שיחה ראשונה – קולות (סבב 1)</title>
+<style>
+  :root { --noa:#F5B700; --itai:#14A3A3; --bg:#FBF7F0; --ink:#1F1B16; --muted:#857C70; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system, "Segoe UI", Arial, sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:28px 16px 120px; }
+  h1 { font-size:26px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 22px; font-size:15px; }
+  .all { display:flex; align-items:center; gap:14px; width:100%; border:0; border-radius:18px; padding:16px 18px; margin-bottom:22px;
+         background:var(--ink); color:#fff; font-size:19px; font-weight:600; cursor:pointer; }
+  .card { display:flex; align-items:flex-start; gap:14px; background:var(--card); border-radius:18px; padding:14px; margin-bottom:12px;
+          box-shadow:0 1px 3px rgba(0,0,0,.06); border:2px solid transparent; transition:border-color .15s; }
+  .card.playing { border-color:var(--c); }
+  .play { flex:none; width:58px; height:58px; border-radius:50%; border:0; background:var(--c); color:#fff; cursor:pointer;
+          display:grid; place-items:center; transition:transform .1s; }
+  .play:active { transform:scale(.94); }
+  .play svg { width:22px; height:22px; }
+  .all .play { width:44px; height:44px; background:#fff; color:var(--ink); }
+  .body { flex:1; min-width:0; }
+  .who { font-size:13px; font-weight:700; color:var(--c); margin-bottom:2px; }
+  .line { font-size:22px; line-height:1.45; }
+  .num { color:var(--muted); font-size:13px; margin-inline-end:6px; }
+  .vote { display:flex; gap:8px; margin-top:10px; }
+  .vote button { border:1.5px solid #E4DDD2; background:#fff; border-radius:999px; padding:7px 14px; font-size:15px; cursor:pointer; }
+  .vote button.on.ok { background:#E5F6EA; border-color:#3BAA5C; }
+  .vote button.on.no { background:#FDECEA; border-color:#D9534F; }
+  .note { display:none; width:100%; margin-top:8px; border:1.5px solid #E4DDD2; border-radius:12px; padding:9px 11px; font-size:16px; font-family:inherit; }
+  .card.no .note { display:block; }
+  .send { position:fixed; inset-inline:0; bottom:0; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); background:linear-gradient(transparent, var(--bg) 30%); }
+  .send button { display:block; width:100%; max-width:640px; margin:0 auto; border:0; border-radius:16px; padding:16px; font-size:18px; font-weight:700;
+                 background:#25D366; color:#fff; cursor:pointer; }
+  .general { width:100%; min-height:70px; border:1.5px solid #E4DDD2; border-radius:14px; padding:10px 12px; font-size:16px; font-family:inherit; margin-top:8px; }
+  label { font-weight:600; display:block; margin-top:18px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>שיחה ראשונה – קולות</h1>
+  <p class="sub">סבב 1 · לוחצים ▶ ומקשיבים. לכל משפט ✅ או ❌ ומה לתקן.</p>
+
+  <button class="all" id="all"><span class="play"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 4v16l13-8z"/></svg></span>כל השיחה ברצף</button>
+
+  <div id="list"></div>
+
+  <label for="general">הערות כלליות (קצב, אופי הדמויות)</label>
+  <textarea class="general" id="general"></textarea>
+</main>
+<div class="send"><button id="send">שליחה לאלנה בוואטסאפ</button></div>
+
+<script>
+const ROUND = "talk-01 v1";
+const LINES = [
+  ["itai","הַי, מָה קוֹרֶה?"],
+  ["noa","סַבָּבָה, מָה נִשְׁמָע? אֵיךְ קוֹרְאִים לְךָ?"],
+  ["itai","קוֹרְאִים לִי אִיתַי. אֵיךְ קוֹרְאִים לָךְ?"],
+  ["noa","אֲנִי נוֹעָה. מֵאֵיפֹה אַתָּה? אֵיפֹה אַתָּה גָּר?"],
+  ["itai","אֲנִי מִיְּרוּשָׁלַיִם. מֵאֵיפֹה אַתְּ?"],
+  ["noa","אֲנִי מִתֵּל אָבִיב. בֶּן כַּמָּה אַתָּה?"],
+  ["itai","אֲנִי בֶּן 15. בַּת כַּמָּה אַתְּ?"],
+  ["noa","אֲנִי בַּת 14."],
+];
+const NAME = { noa:"נועה", itai:"איתי" };
+const PLAY = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 4v16l13-8z"/></svg>';
+const PAUSE = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>';
+const KEY = "yalla-voices:" + ROUND;
+const state = JSON.parse(localStorage.getItem(KEY) || "{}");
+const save = () => localStorage.setItem(KEY, JSON.stringify(state));
+
+const audio = new Audio();
+let current = null;
+function stop() {
+  audio.pause();
+  if (current) { current.btn.innerHTML = PLAY; current.card && current.card.classList.remove("playing"); }
+  current = null;
+}
+function play(src, btn, card) {
+  const same = current && current.btn === btn;
+  stop();
+  if (same) return;
+  audio.src = src; audio.play();
+  btn.innerHTML = PAUSE; card && card.classList.add("playing");
+  current = { btn, card };
+}
+audio.onended = stop;
+
+const list = document.getElementById("list");
+LINES.forEach(([who, text], i) => {
+  const n = i + 1, id = String(n).padStart(2, "0");
+  const s = state[n] || (state[n] = {});
+  const card = document.createElement("div");
+  card.className = "card" + (s.v === "no" ? " no" : "");
+  card.style.setProperty("--c", `var(--${who})`);
+  card.innerHTML = `
+    <button class="play" aria-label="play">${PLAY}</button>
+    <div class="body">
+      <div class="who"><span class="num">${n}</span>${NAME[who]}</div>
+      <div class="line">${text}</div>
+      <div class="vote">
+        <button class="ok ${s.v === "ok" ? "on" : ""}">✅ טוב</button>
+        <button class="no ${s.v === "no" ? "on" : ""}">❌ לתקן</button>
+      </div>
+      <input class="note" placeholder="מה לתקן? (מילה, הטעמה, טון)" value="${(s.note || "").replace(/"/g, "&quot;")}">
+    </div>`;
+  const [pb, ok, no, note] = ["button.play", "button.ok", "button.no", ".note"].map(q => card.querySelector(q));
+  pb.onclick = () => play(`audio/${id}_${who}.mp3`, pb, card);
+  const vote = v => {
+    s.v = s.v === v ? undefined : v;
+    ok.classList.toggle("on", s.v === "ok"); no.classList.toggle("on", s.v === "no");
+    card.classList.toggle("no", s.v === "no"); if (s.v === "no") note.focus();
+    save();
+  };
+  ok.onclick = () => vote("ok"); no.onclick = () => vote("no");
+  note.oninput = () => { s.note = note.value; save(); };
+  list.appendChild(card);
+});
+
+const allBtn = document.getElementById("all"), allIcon = allBtn.querySelector(".play");
+allBtn.onclick = () => play("audio/00_all.mp3", allIcon, null);
+
+const general = document.getElementById("general");
+general.value = state.general || "";
+general.oninput = () => { state.general = general.value; save(); };
+
+document.getElementById("send").onclick = () => {
+  const rows = LINES.map(([who, text], i) => {
+    const s = state[i + 1] || {};
+    const mark = s.v === "ok" ? "✅" : s.v === "no" ? "❌" : "—";
+    return `${i + 1}. ${mark} ${NAME[who]}${s.v === "no" && s.note ? ": " + s.note : ""}`;
+  });
+  let msg = `קולות ${ROUND}\n` + rows.join("\n");
+  if (state.general) msg += `\n\nכללי: ${state.general}`;
+  window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+};
+</script>
+</body>
+</html>
